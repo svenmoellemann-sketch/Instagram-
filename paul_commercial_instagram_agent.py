@@ -9,6 +9,13 @@ import random
 from datetime import datetime
 from typing import Literal
 
+from canva_integration import (
+    get_slide_canva_params,
+    run_canva_agent,
+    print_canva_summary,
+    BRAND_KIT_ID,
+)
+
 # ---------------------------------------------------------------------------
 # Konfiguration
 # ---------------------------------------------------------------------------
@@ -296,6 +303,65 @@ def interactive_mode() -> None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         save_stories([story], f"story_{ts}.json")
 
+    # Canva-Push?
+    canva = input("\n🎨 Story direkt in Canva erstellen? (j/n, Standard: n): ").strip().lower()
+    if canva == "j":
+        print("\n" + "─" * 55)
+        designs = run_canva_agent(story)
+        print_canva_summary(designs)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        with open(f"canva_designs_{ts}.json", "w", encoding="utf-8") as f:
+            json.dump(designs, f, ensure_ascii=False, indent=2)
+        print(f"\n💾 Canva-Design-Daten gespeichert: canva_designs_{ts}.json")
+
+
+# ---------------------------------------------------------------------------
+# Canva-Direktfunktionen (Programmatischer Zugriff)
+# ---------------------------------------------------------------------------
+
+def generate_and_push_to_canva(
+    story_type: str | None = None,
+    thema: str | None = None,
+    zielgruppe: str = "Allgemein",
+    slides: int = 5,
+) -> tuple[dict, list[dict]]:
+    """
+    Kompletter Workflow: Story generieren + direkt in Canva pushen.
+
+    Returns:
+        (story_json, canva_designs_liste)
+
+    Beispiel:
+        story, designs = generate_and_push_to_canva(
+            story_type="kapitalanlage",
+            zielgruppe="Investoren"
+        )
+    """
+    print("🔄 Schritt 1/2: Story-Text wird generiert...")
+    story = generate_story(story_type=story_type, thema=thema, zielgruppe=zielgruppe, slides=slides)
+    print_story(story)
+
+    print("\n🎨 Schritt 2/2: Canva-Designs werden erstellt...")
+    designs = run_canva_agent(story)
+    print_canva_summary(designs)
+
+    return story, designs
+
+
+def get_canva_params_for_story(story: dict) -> list[dict]:
+    """
+    Gibt alle Canva-Parameter für eine Story zurück –
+    zur direkten Nutzung mit dem Canva MCP-Server.
+
+    Beispiel (in Claude Code / MCP-Umgebung):
+        params = get_canva_params_for_story(story)
+        for p in params:
+            # mcp__Canva__generate-design(**p)
+            print(p)
+    """
+    slides = story.get("slides", [])
+    return [get_slide_canva_params(story, i) for i in range(1, len(slides) + 1)]
+
 
 # ---------------------------------------------------------------------------
 # CLI-Einstiegspunkt
@@ -307,15 +373,30 @@ if __name__ == "__main__":
     args = sys.argv[1:]
 
     if "--demo" in args:
-        # Demo: Eine Story direkt generieren und ausgeben
         print("🔄 Generiere Demo-Story...")
         story = generate_story(story_type="kapitalanlage", zielgruppe="Investoren", slides=5)
         print_story(story)
         save_stories([story], "demo_story.json")
+
+    elif "--demo-canva" in args:
+        print("🔄 Generiere Demo-Story + Canva-Integration...")
+        story, designs = generate_and_push_to_canva(
+            story_type="kapitalanlage", zielgruppe="Investoren", slides=5
+        )
+        save_stories([story], "demo_story_canva.json")
+
     elif "--wochenplan" in args:
         plan = generate_weekly_plan()
         for s in plan:
             print_story(s)
         save_stories(plan, "wochenplan.json")
+
+    elif "--canva-params" in args:
+        # Gibt Canva-Parameter für eine Demo-Story aus (für MCP-Nutzung)
+        print("🔄 Generiere Canva-Parameter...")
+        story = generate_story(story_type="markt_update", zielgruppe="Allgemein", slides=5)
+        params = get_canva_params_for_story(story)
+        print(json.dumps(params, ensure_ascii=False, indent=2))
+
     else:
         interactive_mode()
